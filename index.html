@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Рулетка Датчики - Автономная Панель</title>
+    <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden; /* Чтобы не было полос прокрутки */
+            background-color: #1a1a1a; /* Темный фон */
+            color: #f0f0f0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        #mainContainer {
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+            padding: 20px;
+            box-sizing: border-box;
+            max-width: 98vw;
+            max-height: 98vh;
+            background-color: #2c2c2c;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+            flex-wrap: wrap; /* Для адаптивности на маленьких экранах */
+        }
+
+        #videoWrapper {
+            position: relative;
+            width: 720px; /* Увеличим ширину для лучшего обзора */
+            height: 405px; /* Соотношение 16:9 */
+            background-color: #000;
+            border: 2px solid #555;
+            border-radius: 8px;
+            overflow: hidden; /* Чтобы датчики не вылезали за пределы */
+            flex-shrink: 0; /* Не сжимать */
+            touch-action: none; /* Для предотвращения скролла на мобильных */
+        }
+
+        #videoPlayer {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #controlPanel {
+            width: 380px; /* Увеличенная ширина панели */
+            background-color: rgba(30, 30, 30, 0.98);
+            border: 1px solid #555;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            z-index: 9999999;
+            font-family: Arial, sans-serif;
+            color: #eee;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            visibility: visible;
+            opacity: 1;
+            max-height: calc(98vh - 40px); /* Ограничиваем высоту панели */
+            overflow-y: auto; /* Прокрутка, если панель слишком высокая */
+        }
+
+        #controlPanel h3 {
+            margin-top: 0;
+            color: #fff;
+            text-align: center;
+            padding: 8px 0;
+            background-color: rgba(50, 50, 50, 0.8);
+            border-bottom: 1px solid #777;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border: 1px dashed #444;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap; /* Позволяет элементам переноситься на новую строку */
+        }
+
+        .control-row label {
+            flex-shrink: 0;
+            width: 80px; /* Увеличена ширина лейбла */
+            font-size: 0.95em;
+            font-weight: bold;
+        }
+
+        .control-row .color-display-mini {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #777;
+            border-radius: 4px;
+            flex-shrink: 0;
+            background-color: #333; /* Дефолтный цвет */
+        }
+
+        button {
+            padding: 8px 12px !important;
+            background-color: #007bff !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 4px !important;
+            cursor: pointer !important;
+            font-size: 0.95rem !important;
+            flex-grow: 1 !important;
+            min-width: 80px;
+            transition: background-color 0.2s ease;
+        }
+
+        button:hover {
+            background-color: #0056b3 !important;
+        }
+
+        button:active {
+            background-color: #004085 !important;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        #logOutput {
+            background-color: #222;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8em;
+            color: #0f0;
+            min-height: 120px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        #currentStatusMessage {
+            text-align: center;
+            font-weight: bold;
+            color: #f8c000;
+            font-size: 1em;
+            margin-bottom: 10px;
+        }
+
+        /* Датчики - рамки на видео */
+        .sensor-indicator {
+            position: absolute;
+            border: 2px dashed rgba(255, 255, 255, 0.7);
+            pointer-events: none;
+            z-index: 10; /* Z-index относительно videoWrapper */
+            box-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+            display: none;
+        }
+
+        .sensor-indicator.active-ball {
+            border: 2px solid #00ffff; /* Голубой */
+            box-shadow: 0 0 8px #00ffff;
+        }
+
+        .sensor-indicator.active-zero-a, .sensor-indicator.active-zero-b {
+            border: 2px solid #00ff00; /* Ярко-зеленый */
+            box-shadow: 0 0 8px #00ff00;
+        }
+
+        /* Стили для индикатора клика */
+        .color-tap-indicator {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: rgba(255, 255, 0, 0.8); /* Желтый */
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 100; /* Поверх всего */
+            pointer-events: none;
+            opacity: 1;
+            transition: opacity 0.5s ease-out;
+        }
+
+        #pastNumbersGroup {
+            margin-top: 10px;
+            border-top: 1px dashed #444;
+            padding-top: 10px;
+        }
+
+        #pastNumbersList {
+            background-color: #222;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 8px;
+            font-size: 0.9em;
+            color: #ccc;
+            max-height: 100px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        input[type="number"] {
+            padding: 6px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background-color: #333;
+            color: #eee;
+            width: 100px;
+            font-size: 1em;
+            text-align: center;
+        }
+
+        /* Canvas для захвата кадров */
+        #hiddenCanvas {
+            display: none; /* Скрываем канвас */
+        }
+
+        /* Адаптивность */
+        @media (max-width: 1150px) {
+            #mainContainer {
+                flex-direction: column;
+                align-items: center;
+            }
+            #videoWrapper {
+                width: 90vw; /* Занимает почти всю ширину */
+                height: calc(90vw / 16 * 9); /* Поддерживаем соотношение */
+            }
+            #controlPanel {
+                width: 90vw;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="mainContainer">
+        <div id="videoWrapper">
+            <video id="videoPlayer" controls autoplay muted playsinline></video>
+            <canvas id="hiddenCanvas"></canvas> </div>
+
+        <div id="controlPanel">
+            <h3>Рулетка Анализатор</h3>
+            <div id="currentStatusMessage">Загрузка видео...</div>
+
+            <div class="control-group">
+                <div class="control-row">
+                    <label>Шар:</label>
+                    <div id="colorDisplayMiniBall" class="color-display-mini"></div>
+                    <button id="selectBallColorButton">Захватить</button>
+                    <button id="setBallSensorButton">Датчик Шар</button>
+                </div>
+                <div id="selectedColorDisplayBall">Цвет шара: Не выбран</div>
+            </div>
+
+            <div class="control-group">
+                <div class="control-row">
+                    <label>Зеро:</label>
+                    <div id="colorDisplayMiniZero" class="color-display-mini"></div>
+                    <button id="selectZeroColorButton">Захватить</button>
+                    <button id="setZeroASensorButton">Датчик А</button>
+                    <button id="setZeroBSensorButton">Датчик Б</button>
+                </div>
+                <div id="selectedColorDisplayZero">Цвет зеро: Не выбран</div>
+            </div>
+
+            <div class="btn-row">
+                <button id="startMeasurementButton">СТАРТ</button>
+                <button id="stopMeasurementButton">СТОП</button>
+                <button id="clearLogButton">Очистить лог</button>
+            </div>
+
+            <h4>Лог событий:</h4>
+            <pre id="logOutput">Готов к работе. Установите цвета и датчики.</pre>
+
+            <div class="control-group" id="pastNumbersGroup">
+                <div class="control-row">
+                    <label>Выпавшее число:</label>
+                    <input type="number" id="actualNumberInput" min="0" max="36" placeholder="0-36">
+                    <button id="saveActualNumberButton">Сохранить</button>
+                </div>
+                <div class="btn-row">
+                    <button id="clearActualNumbersButton">Очистить память</button>
+                </div>
+                <h4>История выпавших чисел:</h4>
+                <pre id="pastNumbersList">Нет данных.</pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const videoPlayer = document.getElementById('videoPlayer');
+            const videoWrapper = document.getElementById('videoWrapper');
+            const hiddenCanvas = document.getElementById('hiddenCanvas');
+            const ctx = hiddenCanvas.getContext('2d', { willReadFrequently: true }); // Для производительности
+
+            // --- Элементы управления ---
+            const selectBallColorButton = document.getElementById('selectBallColorButton');
+            const selectZeroColorButton = document.getElementById('selectZeroColorButton');
+            const setBallSensorButton = document.getElementById('setBallSensorButton');
+            const setZeroASensorButton = document.getElementById('setZeroASensorButton');
+            const setZeroBSensorButton = document.getElementById('setZeroBSensorButton');
+            const startMeasurementButton = document.getElementById('startMeasurementButton');
+            const stopMeasurementButton = document.getElementById('stopMeasurementButton');
+            const clearLogButton = document.getElementById('clearLogButton');
+            const selectedColorDisplayBall = document.getElementById('selectedColorDisplayBall');
+            const selectedColorDisplayZero = document.getElementById('selectedColorDisplayZero');
+            const colorDisplayMiniBall = document.getElementById('colorDisplayMiniBall');
+            const colorDisplayMiniZero = document.getElementById('colorDisplayMiniZero');
+            const currentStatusMessage = document.getElementById('currentStatusMessage');
+            const logOutput = document.getElementById('logOutput');
+
+            // Элементы для памяти выпавших чисел
+            const actualNumberInput = document.getElementById('actualNumberInput');
+            const saveActualNumberButton = document.getElementById('saveActualNumberButton');
+            const clearActualNumbersButton = document.getElementById('clearActualNumbersButton');
+            const pastNumbersList = document.getElementById('pastNumbersList');
+
+            // --- Переменные состояния ---
+            let selectedBallColor = null; // [R, G, B]
+            let selectedZeroColor = null; // [R, G, B]
+            let captureMode = null; // 'ballColor', 'zeroColor', 'ballSensor', 'zeroASensor', 'zeroBSensor'
+
+            const SENSOR_WIDTH = 50; // Фиксированный размер датчика
+            const SENSOR_HEIGHT = 50;
+
+            // Хранилище для датчиков
+            let sensors = {
+                ball: { rect: null, div: null, isSet: false, colorTarget: null },
+                zeroA: { rect: null, div: null, isSet: false, colorTarget: null },
+                zeroB: { rect: null, div: null, isSet: false, colorTarget: null }
+            };
+
+            let isMeasuring = false;
+            let animationFrameId = null; // Для остановки requestAnimationFrame
+
+            // Переменные для измерения Шара
+            let ballRotations = 0;
+            let ballMeasurementStartTime = 0;
+            let ballLastPassedTime = 0;
+            let ballSensorState = 'OUT'; // 'OUT', 'ENTERING', 'IN'
+
+            // Переменные для измерения Зеро
+            let zeroAPassedCurrentCycle = false; // Был ли A пройден в текущем цикле
+            let zeroBPassedCurrentCycle = false; // Был ли Б пройден в текущем цикле
+            let zeroFirstPassTime = 0; // Время первого прохода (либо А, либо Б)
+            let zeroLastPassTime = 0; // Время последнего прохода (для расчета оборота)
+            let zeroRevolutionCount = 0;
+            let zeroSpeeds = []; // Для хранения последних скоростей оборота зеро
+
+            const selectedTolerance = 35; // Допуск для цвета (увеличен для лучшей работы с неидеальным видео)
+            const pixelSampleRate = 3; // Проверять каждый 3-й пиксель
+            const minRevolutionDuration = 500; // Минимальное время для оборота (мс), чтобы отсеять ложные срабатывания
+
+            // Память для выпавших чисел
+            let actualNumbersHistory = [];
+
+            // --- Speech Synthesis API ---
+            const synth = window.speechSynthesis;
+            function speak(text) {
+                if (!synth) {
+                    console.warn('Speech Synthesis API не поддерживается в этом браузере.');
+                    return;
+                }
+                // Отмена предыдущих, чтобы новые произносились быстрее
+                synth.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ru-RU'; // Устанавливаем русский язык
+                utterance.rate = 1.5; // Скорость речи (можно настроить)
+                utterance.pitch = 1; // Высота тона
+                synth.speak(utterance);
+            }
+
+            // Европейская рулетка - порядок чисел по часовой стрелке от 0
+            const europeanRouletteNumbers = [
+                0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26
+            ];
+
+            // --- Инициализация плеера и датчиков ---
+            function initPlayer() {
+                const url = "https://webstream1.betlive.com/?version=1.0.3";
+                if (dashjs.supportsMediaSource()) {
+                    const player = dashjs.MediaPlayer().create();
+                    player.initialize(videoPlayer, url, true); // true for autoplay
+                    currentStatusMessage.textContent = 'Видео загружается...';
+
+                    player.on(dashjs.MediaPlayer.events.STREAM_INITIALIZED, () => {
+                        currentStatusMessage.textContent = 'Видео загружено. Выберите цвета и датчики.';
+                        console.log('Video stream initialized!');
+                        // Инициализируем канвас после загрузки видеометаданных
+                        hiddenCanvas.width = videoPlayer.videoWidth;
+                        hiddenCanvas.height = videoPlayer.videoHeight;
+                    });
+
+                    player.on(dashjs.MediaPlayer.events.ERROR, (event) => {
+                        console.error('DASH.js Error:', event);
+                        currentStatusMessage.textContent = 'Ошибка загрузки видео. Проверьте ссылку и CORS.';
+                        alert('Не удалось загрузить видеопоток. Возможно, проблема с ссылкой или CORS (Cross-Origin Resource Sharing). Попробуйте открыть файл через локальный веб-сервер, если проблема не исчезнет.');
+                    });
+
+                    // Создаем HTML элементы для датчиков и добавляем их в videoWrapper
+                    sensors.ball.div = createSensorDiv('ball');
+                    sensors.zeroA.div = createSensorDiv('zero-a');
+                    sensors.zeroB.div = createSensorDiv('zero-b');
+                    videoWrapper.appendChild(sensors.ball.div);
+                    videoWrapper.appendChild(sensors.zeroA.div);
+                    videoWrapper.appendChild(sensors.zeroB.div);
+
+                    loadSensorSettings(); // Загружаем сохраненные настройки
+
+                } else {
+                    currentStatusMessage.textContent = 'Ваш браузер не поддерживает MediaSource Extensions, необходимых для этого видеопотока.';
+                    alert('Ваш браузер не поддерживает MediaSource Extensions, необходимых для воспроизведения этого видеопотока. Попробуйте обновить браузер (Chrome, Firefox).');
+                }
+            }
+
+            // Создает DIV-индикатор для датчика
+            function createSensorDiv(idSuffix) {
+                const div = document.createElement('div');
+                div.id = `sensorIndicator-${idSuffix}`;
+                div.className = 'sensor-indicator';
+                return div;
+            }
+
+            // --- Вспомогательные функции ---
+            function appendToLog(message) {
+                const timestamp = new Date().toLocaleTimeString();
+                logOutput.textContent += `\n[${timestamp}] ${message}`;
+                logOutput.scrollTop = logOutput.scrollHeight; // Прокрутка вниз
+            }
+
+            function showTapIndicator(x, y, parentRect) {
+                let indicator = document.createElement('div');
+                indicator.className = 'color-tap-indicator';
+                // Координаты относительно videoWrapper
+                indicator.style.left = `${x - parentRect.left}px`;
+                indicator.style.top = `${y - parentRect.top}px`;
+                videoWrapper.appendChild(indicator);
+                setTimeout(() => {
+                    indicator.style.opacity = '0';
+                    setTimeout(() => {
+                        indicator.remove();
+                    }, 200);
+                }, 500);
+            }
+
+            // Парсит строку rgb(r, g, b) в массив [r, g, b]
+            function parseRgbString(rgbString) {
+                const match = rgbString.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+                if (match) {
+                    return [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])];
+                }
+                return [0, 0, 0];
+            }
+
+            // Проверяет, присутствует ли целевой цвет в заданной области датчика
+            function isColorInSensor(sensorRect, targetRGB, tolerance) {
+                if (!sensorRect || !targetRGB || !videoPlayer.readyState >= 2) return false;
+
+                // Отрисовываем текущий кадр видео на скрытом канвасе
+                // Убеждаемся, что канвас соответствует размерам видео
+                if (hiddenCanvas.width !== videoPlayer.videoWidth || hiddenCanvas.height !== videoPlayer.videoHeight) {
+                    hiddenCanvas.width = videoPlayer.videoWidth;
+                    hiddenCanvas.height = videoPlayer.videoHeight;
+                }
+                ctx.drawImage(videoPlayer, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
+
+                // Получаем данные пикселей только из области датчика
+                const imageData = ctx.getImageData(sensorRect.x, sensorRect.y, sensorRect.width, sensorRect.height);
+                const data = imageData.data;
+
+                let foundPixels = 0;
+                const scanStep = pixelSampleRate;
+
+                // Проходим по пикселям в области датчика
+                for (let y = 0; y < sensorRect.height; y += scanStep) {
+                    for (let x = 0; x < sensorRect.width; x += scanStep) {
+                        const i = (y * sensorRect.width + x) * 4;
+                        const r = data[i];
+                        const g = data[i + 1];
+                        const b = data[i + 2];
+
+                        if (
+                            Math.abs(r - targetRGB[0]) < tolerance &&
+                            Math.abs(g - targetRGB[1]) < tolerance &&
+                            Math.abs(b - targetRGB[2]) < tolerance
+                        ) {
+                            foundPixels++;
+                        }
+                    }
+                }
+                const totalPixelsInScan = (sensorRect.width / scanStep) * (sensorRect.height / scanStep);
+                const minPixelsThreshold = totalPixelsInScan * 0.05; // 5% площади датчика
+                return foundPixels > minPixelsThreshold;
+            }
+
+            // --- Логика сохранения/загрузки настроек (в localStorage) ---
+            function saveSensorSettings() {
+                const settings = {
+                    ballColor: selectedBallColor ? selectedBallColor.join(',') : null,
+                    zeroColor: selectedZeroColor ? selectedZeroColor.join(',') : null,
+                    ballSensorRect: sensors.ball.rect,
+                    zeroASensorRect: sensors.zeroA.rect,
+                    zeroBSensorRect: sensors.zeroB.rect
+                };
+                localStorage.setItem('rouletteSensorSettings', JSON.stringify(settings));
+                appendToLog('Настройки датчиков сохранены.');
+            }
+
+            function loadSensorSettings() {
+                const savedSettings = localStorage.getItem('rouletteSensorSettings');
+                if (savedSettings) {
+                    const settings = JSON.parse(savedSettings);
+
+                    if (settings.ballColor) {
+                        selectedBallColor = settings.ballColor.split(',').map(Number);
+                        colorDisplayMiniBall.style.backgroundColor = `rgb(${selectedBallColor.join(',')})`;
+                        selectedColorDisplayBall.textContent = `Цвет шара: rgb(${selectedBallColor.join(',')})`;
+                        sensors.ball.colorTarget = selectedBallColor;
+                    }
+                    if (settings.zeroColor) {
+                        selectedZeroColor = settings.zeroColor.split(',').map(Number);
+                        colorDisplayMiniZero.style.backgroundColor = `rgb(${selectedZeroColor.join(',')})`;
+                        selectedColorDisplayZero.textContent = `Цвет зеро: rgb(${selectedZeroColor.join(',')})`;
+                        sensors.zeroA.colorTarget = selectedZeroColor;
+                        sensors.zeroB.colorTarget = selectedZeroColor;
+                    }
+
+                    if (settings.ballSensorRect) {
+                        sensors.ball.rect = settings.ballSensorRect;
+                        updateSensorDivPosition(sensors.ball.div, sensors.ball.rect, videoWrapper);
+                        sensors.ball.div.classList.add('active-ball');
+                        sensors.ball.isSet = true;
+                    }
+                    if (settings.zeroASensorRect) {
+                        sensors.zeroA.rect = settings.zeroASensorRect;
+                        updateSensorDivPosition(sensors.zeroA.div, sensors.zeroA.rect, videoWrapper);
+                        sensors.zeroA.div.classList.add('active-zero-a');
+                        sensors.zeroA.isSet = true;
+                    }
+                    if (settings.zeroBSensorRect) {
+                        sensors.zeroB.rect = settings.zeroBSensorRect;
+                        updateSensorDivPosition(sensors.zeroB.div, sensors.zeroB.rect, videoWrapper);
+                        sensors.zeroB.div.classList.add('active-zero-b');
+                        sensors.zeroB.isSet = true;
+                    }
+                    if (sensors.ball.isSet && sensors.zeroA.isSet && sensors.zeroB.isSet && selectedBallColor && selectedZeroColor) {
+                        currentStatusMessage.textContent = 'Настройки загружены. Готов к измерению.';
+                        appendToLog('Настройки датчиков загружены из памяти.');
+                    } else if (savedSettings) {
+                         currentStatusMessage.textContent = 'Частичные настройки загружены. Дозавершите установку.';
+                         appendToLog('Частичные настройки загружены. Возможно, требуется донастройка.');
+                    }
+                }
+            }
+
+            function updateSensorDivPosition(div, rect, parentElement) {
+                // Преобразуем координаты относительно канваса к координатам относительно видеоэлемента на экране
+                const videoRect = videoPlayer.getBoundingClientRect();
+                const scaleX = videoRect.width / hiddenCanvas.width;
+                const scaleY = videoRect.height / hiddenCanvas.height;
+
+                const displayX = rect.x * scaleX;
+                const displayY = rect.y * scaleY;
+                const displayWidth = rect.width * scaleX;
+                const displayHeight = rect.height * scaleY;
+
+                div.style.left = `${displayX}px`;
+                div.style.top = `${displayY}px`;
+                div.style.width = `${displayWidth}px`;
+                div.style.height = `${displayHeight}px`;
+                div.style.display = 'block';
+            }
+
+            // --- Логика сохранения/загрузки истории выпавших чисел ---
+            function saveActualNumbers() {
+                localStorage.setItem('rouletteActualNumbers', JSON.stringify(actualNumbersHistory));
+                updatePastNumbersDisplay();
+                appendToLog('История выпавших чисел сохранена.');
+            }
+
+            function loadActualNumbers() {
+                const savedNumbers = localStorage.getItem('rouletteActualNumbers');
+                if (savedNumbers) {
+                    actualNumbersHistory = JSON.parse(savedNumbers);
+                    updatePastNumbersDisplay();
+                    appendToLog('История выпавших чисел загружена.');
+                }
+            }
+
+            function updatePastNumbersDisplay() {
+                if (actualNumbersHistory.length === 0) {
+                    pastNumbersList.textContent = 'Нет данных.';
+                } else {
+                    pastNumbersList.textContent = actualNumbersHistory.join(', ');
+                }
+            }
+
+            // --- Обработчики событий ---
+            // Кнопки захвата цвета
+            selectBallColorButton.addEventListener('click', () => {
+                captureMode = 'ballColor';
+                currentStatusMessage.textContent = 'Кликните по видео для захвата ЦВЕТА ШАРА.';
+                speak('Режим захвата цвета шара. Кликните по видео.');
+            });
+
+            selectZeroColorButton.addEventListener('click', () => {
+                captureMode = 'zeroColor';
+                currentStatusMessage.textContent = 'Кликните по видео для захвата ЦВЕТА ЗЕРО.';
+                speak('Режим захвата цвета зеро. Кликните по видео.');
+            });
+
+            // Кнопки установки датчиков
+            setBallSensorButton.addEventListener('click', () => {
+                captureMode = 'ballSensor';
+                currentStatusMessage.textContent = 'Кликните по видео, чтобы УСТАНОВИТЬ ДАТЧИК ШАРА.';
+                sensors.ball.div.style.display = 'block';
+                speak('Режим установки датчика шара. Кликните по видео.');
+            });
+
+            setZeroASensorButton.addEventListener('click', () => {
+                captureMode = 'zeroASensor';
+                currentStatusMessage.textContent = 'Кликните по видео, чтобы УСТАНОВИТЬ ДАТЧИК ЗЕРО А.';
+                sensors.zeroA.div.style.display = 'block';
+                speak('Режим установки датчика зеро А. Кликните по видео.');
+            });
+
+            setZeroBSensorButton.addEventListener('click', () => {
+                captureMode = 'zeroBSensor';
+                currentStatusMessage.textContent = 'Кликните по видео, чтобы УСТАНОВИТЬ ДАТЧИК ЗЕРО Б.';
+                sensors.zeroB.div.style.display = 'block';
+                speak('Режим установки датчика зеро Б. Кликните по видео.');
+            });
+
+            // Обработчик клика по видеоплееру
+            videoWrapper.addEventListener('click', (event) => {
+                if (!captureMode) {
+                    currentStatusMessage.textContent = 'Сначала выберите режим настройки (цвет/датчик).';
+                    return;
+                }
+                if (videoPlayer.readyState < 2) { // Проверяем, что видео готово
+                    currentStatusMessage.textContent = 'Видео не готово.';
+                    speak('Видео не готово. Подождите загрузки.');
+                    return;
+                }
+
+                const rect = videoPlayer.getBoundingClientRect(); // Позиция видео на экране
+                const clickX = event.clientX - rect.left;
+                const clickY = event.clientY - rect.top;
+
+                // Масштабируем координаты клика к размеру скрытого канваса
+                const scaleX = hiddenCanvas.width / rect.width;
+                const scaleY = hiddenCanvas.height / rect.height;
+                const canvasX = Math.floor(clickX * scaleX);
+                const canvasY = Math.floor(clickY * scaleY);
+
+                showTapIndicator(event.clientX, event.clientY, rect); // Временный индикатор клика
+
+                if (captureMode === 'ballColor' || captureMode === 'zeroColor') {
+                    // Захват цвета: отрисовываем кадр, берем пиксель
+                    ctx.drawImage(videoPlayer, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
+                    const pixel = ctx.getImageData(canvasX, canvasY, 1, 1).data;
+                    const capturedRgb = [pixel[0], pixel[1], pixel[2]];
+                    const rgbString = `rgb(${capturedRgb.join(',')})`;
+
+                    if (captureMode === 'ballColor') {
+                        selectedBallColor = capturedRgb;
+                        colorDisplayMiniBall.style.backgroundColor = rgbString;
+                        selectedColorDisplayBall.textContent = `Цвет шара: ${rgbString}`;
+                        sensors.ball.colorTarget = selectedBallColor;
+                        currentStatusMessage.textContent = 'Цвет шара установлен.';
+                        speak('Цвет шара установлен.');
+                    } else { // zeroColor
+                        selectedZeroColor = capturedRgb;
+                        colorDisplayMiniZero.style.backgroundColor = rgbString;
+                        selectedColorDisplayZero.textContent = `Цвет зеро: ${rgbString}`;
+                        sensors.zeroA.colorTarget = selectedZeroColor;
+                        sensors.zeroB.colorTarget = selectedZeroColor;
+                        currentStatusMessage.textContent = 'Цвет зеро установлен.';
+                        speak('Цвет зеро установлен.');
+                    }
+                    saveSensorSettings(); // Сохраняем настройки после захвата цвета
+                } else if (captureMode.endsWith('Sensor')) {
+                    // Установка датчика
+                    const sensorType = captureMode.replace('Sensor', '');
+                    const sensorObj = sensors[sensorType];
+
+                    // Устанавливаем координаты датчика относительно канваса (масштабированные от клика)
+                    sensorObj.rect = {
+                        x: Math.floor(clickX * scaleX - SENSOR_WIDTH * scaleX / 2),
+                        y: Math.floor(clickY * scaleY - SENSOR_HEIGHT * scaleY / 2),
+                        width: Math.floor(SENSOR_WIDTH * scaleX),
+                        height: Math.floor(SENSOR_HEIGHT * scaleY)
+                    };
+
+                    // Обновляем позицию DIV-индикатора на видеоэлементе
+                    updateSensorDivPosition(sensorObj.div, sensorObj.rect, videoWrapper);
+                    sensorObj.div.classList.add(`active-${sensorType}`);
+                    sensorObj.isSet = true;
+                    currentStatusMessage.textContent = `Датчик ${sensorType.toUpperCase().replace('ZEROA', 'ЗЕРО А').replace('ZEROB', 'ЗЕРО Б')} установлен.`;
+                    speak(`Датчик ${sensorType.replace('ball', 'шара ').replace('zeroA', 'зеро А ').replace('zeroB', 'зеро Б ')} установлен.`);
+                    saveSensorSettings(); // Сохраняем настройки после установки датчика
+                }
+                captureMode = null; // Сбрасываем режим после действия
+            });
+
+            // Кнопки Старт/Стоп/Очистить лог
+            startMeasurementButton.addEventListener('click', () => {
+                if (!selectedBallColor || !selectedZeroColor || !sensors.ball.isSet || !sensors.zeroA.isSet || !sensors.zeroB.isSet) {
+                    currentStatusMessage.textContent = 'Пожалуйста, сначала установите все цвета и все датчики!';
+                    speak('Ошибка. Установите все цвета и датчики.');
+                    return;
+                }
+                if (videoPlayer.readyState < 2) {
+                    currentStatusMessage.textContent = 'Видео не готово к анализу.';
+                    speak('Видео не готово. Подождите загрузки.');
+                    return;
+                }
+
+                isMeasuring = true;
+                ballRotations = 0;
+                ballMeasurementStartTime = performance.now();
+                ballLastPassedTime = 0;
+                ballSensorState = 'OUT';
+                zeroAPassedCurrentCycle = false;
+                zeroBPassedCurrentCycle = false;
+                zeroFirstPassTime = 0;
+                zeroLastPassTime = 0;
+                zeroRevolutionCount = 0;
+                zeroSpeeds = [];
+                logOutput.textContent = ''; // Очищаем лог
+                appendToLog(`--- ИЗМЕРЕНИЕ СТАРТОВАЛО в ${new Date().toLocaleTimeString()} ---`);
+                currentStatusMessage.textContent = 'ИЗМЕРЕНИЕ АКТИВНО...';
+                speak('Измерение стартовало.');
+                if (animationFrameId) cancelAnimationFrame(animationFrameId); // Убедимся, что предыдущий цикл остановлен
+                trackSensorsInFrame(); // Запускаем основной цикл анализа
+            });
+
+            stopMeasurementButton.addEventListener('click', () => {
+                stopMeasurement();
+            });
+
+            function stopMeasurement() {
+                if (!isMeasuring) return;
+                isMeasuring = false;
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                appendToLog(`--- ИЗМЕРЕНИЕ ОСТАНОВЛЕНО в ${new Date().toLocaleTimeString()} ---`);
+                const totalBallTime = performance.now() - ballMeasurementStartTime;
+                if (ballRotations > 0) {
+                    appendToLog(`Шар прошёл ${ballRotations} оборотов за ${totalBallTime.toFixed(0)} мс.`);
+                    appendToLog(`Среднее время оборота шара: ${(totalBallTime / ballRotations).toFixed(0)} мс.`);
+                } else {
+                    appendToLog('Шар не прошел ни одного полного оборота.');
+                }
+                if (zeroSpeeds.length > 0) {
+                    const avgZeroSpeed = zeroSpeeds.reduce((sum, speed) => sum + speed, 0) / zeroSpeeds.length;
+                    appendToLog(`Среднее время оборота барабана (зеро): ${avgZeroSpeed.toFixed(0)} мс.`);
+                } else {
+                    appendToLog('Недостаточно данных для расчета скорости барабана.');
+                }
+                currentStatusMessage.textContent = 'Измерение остановлено.';
+                speak('Измерение остановлено.');
+            }
+
+            clearLogButton.addEventListener('click', () => {
+                logOutput.textContent = 'Готов к работе. Установите цвета и датчики.';
+                currentStatusMessage.textContent = 'Лог очищен.';
+                speak('Лог очищен.');
+            });
+
+            // --- Логика для памяти выпавших чисел ---
+            saveActualNumberButton.addEventListener('click', () => {
+                const num = parseInt(actualNumberInput.value, 10);
+                if (!isNaN(num) && num >= 0 && num <= 36) {
+                    actualNumbersHistory.push(num);
+                    saveActualNumbers();
+                    appendToLog(`Выпавшее число ${num} сохранено в память.`);
+                    actualNumberInput.value = ''; // Очищаем поле
+                } else {
+                    appendToLog('Ошибка: Введите корректное число от 0 до 36.');
+                    speak('Ошибка. Введите число от нуля до тридцати шести.');
+                }
+            });
+
+            clearActualNumbersButton.addEventListener('click', () => {
+                actualNumbersHistory = [];
+                saveActualNumbers();
+                appendToLog('Память выпавших чисел очищена.');
+                speak('Память выпавших чисел очищена.');
+            });
+
+            // --- Основной цикл отслеживания датчиков ---
+            function trackSensorsInFrame() {
+                if (!isMeasuring || videoPlayer.paused || videoPlayer.ended || videoPlayer.readyState < 2) {
+                    animationFrameId = requestAnimationFrame(trackSensorsInFrame); // Продолжаем цикл, даже если не измеряем
+                    return;
+                }
+
+                const currentTime = performance.now();
+
+                // --- Обработка датчика шара ---
+                if (sensors.ball.isSet && sensors.ball.colorTarget) {
+                    const ballInSensor = isColorInSensor(sensors.ball.rect, sensors.ball.colorTarget, selectedTolerance);
+
+                    if (ballInSensor && ballSensorState === 'OUT') {
+                        ballSensorState = 'ENTERING';
+                    } else if (!ballInSensor && ballSensorState === 'ENTERING') {
+                        ballSensorState = 'IN'; // Шар только что покинул зону, считаем проход
+                        ballRotations++;
+                        const passTime = currentTime;
+                        if (ballLastPassedTime !== 0) {
+                            const revolutionDuration = passTime - ballLastPassedTime;
+                            if (revolutionDuration > minRevolutionDuration) { // Отсекаем ложные быстрые срабатывания
+                                appendToLog(`Шар: Оборот ${ballRotations} завершен за ${revolutionDuration.toFixed(0)} мс.`);
+                                speak(`Шар. Оборот завершен.`);
+                            }
+                        }
+                        ballLastPassedTime = passTime;
+                        ballSensorState = 'OUT'; // Сброс состояния для следующего входа
+                    }
+                }
+
+                // --- Обработка датчиков зеро (А и Б) ---
+                if (sensors.zeroA.isSet && sensors.zeroB.isSet && sensors.zeroA.colorTarget) {
+                    const zeroInSensorA = isColorInSensor(sensors.zeroA.rect, sensors.zeroA.colorTarget, selectedTolerance);
+                    const zeroInSensorB = isColorInSensor(sensors.zeroB.rect, sensors.zeroB.colorTarget, selectedTolerance);
+
+                    if (zeroInSensorA && !zeroAPassedCurrentCycle) {
+                        zeroAPassedCurrentCycle = true;
+                        appendToLog(`Зеро: Пройдено через Датчик А.`);
+                        if (zeroFirstPassTime === 0) zeroFirstPassTime = currentTime;
+                    } else if (!zeroInSensorA && zeroAPassedCurrentCycle) {
+                        zeroAPassedCurrentCycle = false; // Сброс, как только Зеро выходит из А
+                    }
+
+                    if (zeroInSensorB && !zeroBPassedCurrentCycle) {
+                        zeroBPassedCurrentCycle = true;
+                        appendToLog(`Зеро: Пройдено через Датчик Б.`);
+                        if (zeroFirstPassTime === 0) zeroFirstPassTime = currentTime; // Если Б первый
+
+                        // Если Зеро прошел А, а затем Б (или наоборот, если это полный оборот)
+                        // Тут логика полного оборота будет срабатывать при каждом проходе через Б.
+                        // Если А был пройден ранее в этом же цикле, это потенциально завершение оборота
+                        if (zeroLastPassTime !== 0 && (currentTime - zeroLastPassTime) > minRevolutionDuration) {
+                            const revolutionDuration = currentTime - zeroLastPassTime;
+                            zeroSpeeds.push(revolutionDuration);
+                            zeroRevolutionCount++;
+                            appendToLog(`Зеро: Оборот №${zeroRevolutionCount} завершен за ${revolutionDuration.toFixed(0)} мс.`);
+                            speak(`Барабан. Оборот завершен.`);
+
+                            // --- Логика расчета и прогноза после завершения оборота (прохода Б) ---
+                            if (zeroSpeeds.length > 0) {
+                                const avgZeroSpeed = zeroSpeeds.reduce((sum, speed) => sum + speed, 0) / zeroSpeeds.length;
+                                appendToLog(`Расчет: Средняя скорость барабана: ${avgZeroSpeed.toFixed(0)} мс/оборот.`);
+
+                                // Очень упрощенный концептуальный прогноз
+                                // Для реального прогноза здесь нужна сложная физическая модель
+                                const predictedIndex = Math.floor(Math.random() * europeanRouletteNumbers.length); // Случайный для демонстрации
+                                const predictedNumber = europeanRouletteNumbers[predictedIndex];
+
+                                appendToLog(`ПРОГНОЗ: Предполагаемое число: ${predictedNumber}`);
+                                speak(`${predictedNumber}`); // Быстрое озвучивание числа
+                                appendToLog(`БОТ: Выдан прогноз, ожидаю остановки для автостопа.`);
+                            }
+                        }
+                        zeroLastPassTime = currentTime;
+
+                        // Автостоп после прохода Зеро через датчик Б
+                        stopMeasurement();
+                    } else if (!zeroInSensorB && zeroBPassedCurrentCycle) {
+                        zeroBPassedCurrentCycle = false; // Сброс, как только Зеро выходит из Б
+                    }
+                }
+                animationFrameId = requestAnimationFrame(trackSensorsInFrame);
+            }
+
+            // --- Инициализация при загрузке ---
+            initPlayer();
+            loadActualNumbers(); // Загружаем историю выпавших чисел
+
+            // Запускаем цикл анализа кадров сразу, даже если измерение не активно.
+            // Это нужно, чтобы canvas.width/height были установлены после загрузки видео,
+            // и чтобы можно было кликать для захвата цвета/датчиков.
+            // isMeasuring будет контролировать, когда логика подсчета активна.
+            animationFrameId = requestAnimationFrame(trackSensorsInFrame);
+        });
+    </script>
+</body>
+</html>
